@@ -293,9 +293,12 @@ class LarkCliContextTests(unittest.TestCase):
         # The npm .cmd shim goes through cmd.exe, which splits arguments on
         # ``&`` and corrupts device-authorization URLs; the native .exe must be
         # probed first.  os.name is pinned so the Windows branch is asserted on
-        # every host.
+        # every host; the root path is built before pinning it, because Path()
+        # picks its flavour from os.name and a pinned value would ask for a
+        # path class the host cannot instantiate.
+        root = Path("root")
         with mock.patch.object(os, "name", "nt"):
-            candidates = _private_binary_paths(Path("root"))
+            candidates = _private_binary_paths(root)
         exe_indexes = [
             index for index, path in enumerate(candidates) if path.suffix == ".exe"
         ]
