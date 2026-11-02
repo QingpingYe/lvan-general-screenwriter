@@ -291,12 +291,16 @@ def _private_runtime_candidates(environment: Mapping[str, str]) -> tuple[Path, .
 
 def _private_binary_paths(root: Path) -> tuple[Path, ...]:
     if os.name == "nt":
+        # Probe the native executable before any .cmd shim: cmd.exe splits a
+        # command line on ``&``, which corrupts arguments like the URLs in
+        # device-authorization QR codes, while the .exe (the binary the shim
+        # ultimately runs) receives argv untouched.
         return (
-            root / "lark-cli.cmd",
             root / "lark-cli.exe",
+            root / "node_modules" / "@larksuite" / "cli" / "bin" / "lark-cli.exe",
+            root / "lark-cli.cmd",
             root / "node_modules" / ".bin" / "lark-cli.cmd",
             root / "node_modules" / ".bin" / "lark-cli",
-            root / "node_modules" / "@larksuite" / "cli" / "bin" / "lark-cli.exe",
         )
     return (
         root / "lark-cli",

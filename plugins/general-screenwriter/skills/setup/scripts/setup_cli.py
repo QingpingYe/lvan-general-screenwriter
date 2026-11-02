@@ -920,6 +920,21 @@ def _exit_code(command: str, payload: Mapping[str, Any]) -> int:
     return 1
 
 
+def _configure_utf8_output() -> None:
+    """Emit UTF-8 regardless of the console's native code page.
+
+    A zh-CN Windows console defaults to cp936; printing a payload that carries
+    characters outside GBK (for example a U+FFFD left by subprocess decoding)
+    raises UnicodeEncodeError before the JSON reaches the caller.  Guarded so
+    streams without ``reconfigure`` (test doubles, older interpreters) keep
+    working.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if callable(reconfigure):
+            reconfigure(encoding="utf-8", errors="replace")
+
+
 def main(
     argv: Sequence[str] | None = None,
     *,
@@ -928,6 +943,7 @@ def main(
     popen: Callable[..., Any] = subprocess.Popen,
     which: Callable[[str], str | None] = shutil.which,
 ) -> int:
+    _configure_utf8_output()
     arguments = list(sys.argv[1:] if argv is None else argv)
     resume_context: SetupResumeContext | None = None
     command: str | None = None

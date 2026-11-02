@@ -11,7 +11,7 @@ import sys
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Mapping
+from typing import Any, Callable, Mapping, Sequence
 from urllib.error import URLError
 from urllib.request import urlopen
 
@@ -213,7 +213,12 @@ def install_private_cli(
             reason="npm install failed: " + LarkCli._redact(output),
         )
 
-    return _verify_installed(target.cli_bin, requested, runner, tuple(command))
+    return _verify_installed(
+        (*_private_binary_candidates(target.root, target.platform), target.cli_bin),
+        requested,
+        runner,
+        tuple(command),
+    )
 
 
 def _resolve_npm(environ: Mapping[str, str] | None) -> str | None:
@@ -396,12 +401,16 @@ def _sibling_version_candidates(root: Path, platform: str) -> tuple[Path, ...]:
 
 def _private_binary_candidates(root: Path, platform: str) -> tuple[Path, ...]:
     if platform == "windows":
+        # Probe the native executable before any .cmd shim: cmd.exe splits a
+        # command line on ``&``, which corrupts arguments like the URLs in
+        # device-authorization QR codes, while the .exe (the binary the shim
+        # ultimately runs) receives argv untouched.
         return (
-            root / "lark-cli.cmd",
             root / "lark-cli.exe",
+            root / "node_modules" / "@larksuite" / "cli" / "bin" / "lark-cli.exe",
+            root / "lark-cli.cmd",
             root / "node_modules" / ".bin" / "lark-cli.cmd",
             root / "node_modules" / ".bin" / "lark-cli",
-            root / "node_modules" / "@larksuite" / "cli" / "bin" / "lark-cli.exe",
         )
     return (
         root / "lark-cli",
@@ -411,21 +420,36 @@ def _private_binary_candidates(root: Path, platform: str) -> tuple[Path, ...]:
 
 
 def _verify_installed(
-    binary: Path,
+    binaries: Path | Sequence[Path],
     requested: str,
     runner: Callable[..., Any],
     command: tuple[str, ...] = (),
 ) -> CliInstallResult:
-    try:
-        context = resolve_cli_context(candidates=(binary,), runner=runner)
-    except CliContextError as error:
+    """Verify a freshly installed CLI, preferring the native Windows binary.
+
+    npm still creates only the ``.bin/lark-cli.cmd`` shim, so verification
+    retries the pre-install candidate order; the returned path is what the
+    resolver actually selected.
+    """
+    candidates = (binaries,) if isinstance(binaries, Path) else tuple(binaries)
+    context = None
+    last_error: CliContextError | None = None
+    for binary in candidates:
+        try:
+            context = resolve_cli_context(candidates=(binary,), runner=runner)
+        except CliContextError as error:
+            last_error = error
+            continue
+        break
+    if context is None:
         return CliInstallResult(
             status="installation_failed",
             path=None,
             version=requested,
             installed=False,
             command=command,
-            reason="installed CLI could not be verified: " + str(error),
+            reason="installed CLI could not be verified: "
+            + (str(last_error) if last_error is not None else str(binaries)),
         )
     if context.version != requested:
         return CliInstallResult(

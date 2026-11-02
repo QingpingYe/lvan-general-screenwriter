@@ -249,7 +249,23 @@ def export_lint_fixture(components: Components, out: str | Path) -> Path:
     return out
 
 
+def _configure_utf8_output() -> None:
+    """Emit UTF-8 regardless of the console's native code page.
+
+    A zh-CN Windows console defaults to cp936; printing a payload that carries
+    characters outside GBK (for example a U+FFFD left by subprocess decoding)
+    raises UnicodeEncodeError before the JSON reaches the caller.  Guarded so
+    streams without ``reconfigure`` (test doubles, older interpreters) keep
+    working.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if callable(reconfigure):
+            reconfigure(encoding="utf-8", errors="replace")
+
+
 def main(argv=None, stdout=None, components_factory=None, environ=None) -> int:
+    _configure_utf8_output()
     args = build_parser().parse_args(argv)
     stdout = stdout if stdout is not None else sys.stdout
     if args.command == "config-status":

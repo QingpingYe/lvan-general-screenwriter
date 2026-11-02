@@ -533,6 +533,60 @@ class SetupDoctorTests(unittest.TestCase):
         self.assertEqual(after["status"], "ready")
         self.assertIn(setup_doctor.WRITE_VERIFICATION_TITLE, cli.created_titles)
 
+    def test_write_verification_accepts_the_feishu_rendered_title(self):
+        # Feishu renders the document title into the fetched body, so the
+        # acceptance page reads back with a leading markdown heading.
+        cli = FakeCli()
+        with patched_runtime(cli):
+            init_target(
+                config_path="config.json", authorized=True, initializer_confirmed=True,
+            )
+            original_fetch = cli.fetch_doc
+
+            def rendered_fetch(token):
+                result = original_fetch(token)
+                if cli.titles_by_token.get(token) == setup_doctor.WRITE_VERIFICATION_TITLE:
+                    document = result["data"]["document"]
+                    document["content"] = (
+                        f"# {setup_doctor.WRITE_VERIFICATION_TITLE}\n\n{document['content']}"
+                    )
+                return result
+
+            cli.fetch_doc = rendered_fetch
+            report = verify_write_access(config_path="config.json", authorized=True)
+
+        self.assertEqual(report["status"], "ready")
+
+    def test_verification_is_valid_strips_only_the_exact_title_forms(self):
+        body = setup_doctor._verification_body("team-a", "open_id:ou_user")
+        heading = f"# {setup_doctor.WRITE_VERIFICATION_TITLE}"
+
+        self.assertTrue(setup_doctor._verification_is_valid(
+            f"{heading}\n\n{body}", "team-a", "open_id:ou_user",
+        ))
+        self.assertTrue(setup_doctor._verification_is_valid(
+            f"<title>{setup_doctor.WRITE_VERIFICATION_TITLE}</title>\n{body}",
+            "team-a", "open_id:ou_user",
+        ))
+
+    def test_verification_is_valid_rejects_any_other_page_content(self):
+        body = setup_doctor._verification_body("team-a", "open_id:ou_user")
+        heading = f"# {setup_doctor.WRITE_VERIFICATION_TITLE}"
+
+        # Content before the title line must not be skipped over.
+        self.assertFalse(setup_doctor._verification_is_valid(
+            f"人类补充的正文\n\n{heading}\n\n{body}", "team-a", "open_id:ou_user",
+        ))
+        # A changed payload under the title still fails the exact comparison.
+        self.assertFalse(setup_doctor._verification_is_valid(
+            f"{heading}\n\n{body}".replace('"verified"', '"draft"'),
+            "team-a", "open_id:ou_user",
+        ))
+        # Trailing additions after the JSON body must fail too.
+        self.assertFalse(setup_doctor._verification_is_valid(
+            f"{heading}\n\n{body}人类补充的正文", "team-a", "open_id:ou_user",
+        ))
+
     def test_verify_write_access_requires_authorization(self):
         cli = FakeCli()
         with patched_runtime(cli):

@@ -3,6 +3,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 SCRIPTS = Path(__file__).parent
 if str(SCRIPTS) not in sys.path:
@@ -18,6 +19,7 @@ from lark_cli_context import (
     resolve_profile_name,
     standard_cli_candidates,
 )
+from lark_cli_context import _private_binary_paths
 
 
 class Completed:
@@ -286,6 +288,23 @@ class LarkCliContextTests(unittest.TestCase):
 
         self.assertEqual(context.profile, "team-env")
         self.assertEqual(runner.calls[0][:3], [str(absolute(binary)), "--profile", "team-env"])
+
+    def test_windows_private_candidates_prefer_native_exe_over_cmd_shims(self):
+        # The npm .cmd shim goes through cmd.exe, which splits arguments on
+        # ``&`` and corrupts device-authorization URLs; the native .exe must be
+        # probed first.  os.name is pinned so the Windows branch is asserted on
+        # every host.
+        with mock.patch.object(os, "name", "nt"):
+            candidates = _private_binary_paths(Path("root"))
+        exe_indexes = [
+            index for index, path in enumerate(candidates) if path.suffix == ".exe"
+        ]
+        cmd_indexes = [
+            index for index, path in enumerate(candidates) if path.suffix == ".cmd"
+        ]
+        self.assertTrue(exe_indexes)
+        self.assertTrue(cmd_indexes)
+        self.assertLess(max(exe_indexes), min(cmd_indexes))
 
 
 if __name__ == "__main__":

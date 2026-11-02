@@ -13,6 +13,7 @@ SCRIPTS = Path(__file__).parent
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
+import lark_runtime
 from lark_runtime import (
     PrivateCliArtifact,
     RuntimePaths,
@@ -171,6 +172,18 @@ class PrivateCliInstallTests(unittest.TestCase):
             self.assertEqual(result.status, "available")
             self.assertEqual(result.path, sibling.resolve())
             which.assert_not_called()
+
+    def test_installed_native_binary_is_preferred_over_the_npm_cmd_shim(self):
+        # npm installs only the .bin/lark-cli.cmd shim; cmd.exe would split
+        # arguments on ``&``, so verification must select the native .exe the
+        # shim wraps when the package layout provides one.
+        nested = (
+            Path("root") / "node_modules" / "@larksuite" / "cli" / "bin" / "lark-cli.exe"
+        )
+        shim = Path("root") / "node_modules" / ".bin" / "lark-cli.cmd"
+        candidates = lark_runtime._private_binary_candidates(Path("root"), "windows")
+
+        self.assertLess(candidates.index(nested), candidates.index(shim))
 
     def test_missing_npm_returns_runtime_missing(self):
         with tempfile.TemporaryDirectory() as directory:

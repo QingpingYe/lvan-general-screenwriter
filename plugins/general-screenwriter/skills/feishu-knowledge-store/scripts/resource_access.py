@@ -117,12 +117,28 @@ def _stable_identity(payload: Any) -> str | None:
         "user_id": set(),
         "union_id": set(),
     }
-    _collect_identity_values(payload, values)
+    _collect_identity_values(_user_identity_scope(payload), values)
     for name in ("open_id", "user_id", "union_id"):
         found = values[name]
         if len(found) == 1:
             return f"{name}:{next(iter(found))}"
     return None
+
+
+def _user_identity_scope(payload: Any) -> Any:
+    """Narrow multi-identity auth payloads to the acting user identity.
+
+    ``lark-cli auth status`` reports bot and user identities side by side; an
+    unscoped scan finds two different open ids and can never resolve the
+    authenticated user.  Only the ``user`` entry describes the acting identity.
+    """
+    if isinstance(payload, Mapping):
+        identities = payload.get("identities")
+        if isinstance(identities, Mapping):
+            user = identities.get("user")
+            if isinstance(user, Mapping):
+                return user
+    return payload
 
 
 def _collect_identity_values(value: Any, values: dict[str, set[str]]) -> None:

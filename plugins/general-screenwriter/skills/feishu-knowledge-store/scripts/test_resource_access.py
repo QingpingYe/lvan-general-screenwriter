@@ -323,6 +323,20 @@ class ResourceAccessTests(unittest.TestCase):
 
         self.assertEqual(authenticated_identity(cli), "open_id:ou_verified")
 
+    def test_authenticated_identity_narrows_to_the_user_entry_when_a_bot_identity_coexists(self):
+        # lark-cli >= 1.0.95 reports identities.bot and identities.user side by
+        # side with different open ids; an unscoped scan finds two values and
+        # can never resolve the acting user.
+        cli = FakeCli(auth_result={
+            "identity": "user",
+            "identities": {
+                "bot": {"status": "ready", "openId": "ou_bot_identity"},
+                "user": {"status": "ready", "openId": "ou_acting_user"},
+            },
+        })
+
+        self.assertEqual(authenticated_identity(cli), "open_id:ou_acting_user")
+
     def test_authenticated_identity_requires_a_stable_user_identifier(self):
         cli = FakeCli(auth_result={"data": {"user": {"name": "Writer"}}})
 

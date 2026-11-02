@@ -299,10 +299,7 @@ def _verification_is_valid(
 ) -> bool:
     if not authenticated_identity:
         return False
-    try:
-        payload = json.loads(content)
-    except (TypeError, json.JSONDecodeError):
-        return False
+    payload = _verification_payload(content)
     return payload == {
         "authenticated_identity": authenticated_identity,
         "purpose": WRITE_VERIFICATION_PURPOSE,
@@ -310,6 +307,31 @@ def _verification_is_valid(
         "schema_version": WRITE_VERIFICATION_SCHEMA_VERSION,
         "status": "verified",
     }
+
+
+def _verification_payload(content: Any) -> Any:
+    """Parse the acceptance marker, tolerating the rendered document title.
+
+    Feishu renders the document title ahead of the body: markdown fetch emits
+    a leading ``# AI_KB_WRITE_VERIFICATION_V1`` heading (older output used a
+    ``<title>`` element).  Strip exactly that title line before the strict
+    parse; anything else added to the page still fails the exact comparison.
+    """
+    if not isinstance(content, str):
+        return None
+    normalized = content.strip()
+    heading = f"# {WRITE_VERIFICATION_TITLE}"
+    if normalized.startswith(heading):
+        normalized = normalized[len(heading):].strip()
+    elif normalized.startswith("<title>"):
+        closing = normalized.find("</title>")
+        title = normalized[len("<title>"):closing] if closing != -1 else None
+        if title == WRITE_VERIFICATION_TITLE:
+            normalized = normalized[closing + len("</title>"):].strip()
+    try:
+        return json.loads(normalized)
+    except (TypeError, json.JSONDecodeError):
+        return None
 
 
 def _read_verification(

@@ -41,6 +41,35 @@ class SetupCliTests(unittest.TestCase):
             code = setup_cli.main(arguments)
         return code, json.loads(output.getvalue())
 
+    def test_main_switches_streams_to_utf8_before_any_output(self):
+        # A zh-CN Windows console defaults to cp936; printing a payload with
+        # characters outside GBK (for example a U+FFFD left by subprocess
+        # decoding) would raise UnicodeEncodeError before the JSON reaches the
+        # caller, so the entry point must reconfigure both streams first.
+        events = []
+
+        class TrackedStream(io.StringIO):
+            def reconfigure(self, encoding=None, errors=None):
+                events.append((encoding, errors))
+
+        report = {
+            "schema_version": 1,
+            "status": "ready",
+            "ready": True,
+            "blocking_checks": [],
+            "checks": [],
+            "ai_next_actions": [],
+            "human_action": None,
+        }
+        with mock.patch.object(setup_cli, "run_doctor", return_value=report):
+            with mock.patch.object(sys, "stdout", TrackedStream()), \
+                    mock.patch.object(sys, "stderr", TrackedStream()):
+                code = setup_cli.main(["doctor", "--json"])
+
+        self.assertEqual(code, 0)
+        self.assertEqual(len(events), 2)
+        self.assertEqual(set(events), {("utf-8", "replace")})
+
     def test_doctor_outputs_json_and_ready_exit_code(self):
         report = {
             "schema_version": 1,

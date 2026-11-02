@@ -6,6 +6,12 @@
 
 - 仓库更名为 `lvan-general-screenwriter`：README、双宿主清单的 `repository` 字段与安装示例更新为新地址；插件名与 marketplace 名不变，纯引用改动，不升版本。历史设计文档中的旧链接保持原样。
 
+### Fixed
+
+- 兼容 lark-cli 1.0.95/1.0.98：`auth status` 同时返回 `identities.bot` 与 `identities.user` 时，身份解析先窄化到 `identities.user`，修复 setup doctor 恒报 `identity_missing`；验收页回读容忍飞书渲染的标题行（`# AI_KB_WRITE_VERIFICATION_V1` 或旧 `<title>` 形式，且只剥完全相同标题），修复 write-verify 恒报 `readback_mismatch:marker_mismatch`。
+- Windows：私有运行时候选顺序把原生 `lark-cli.exe`（含 `@larksuite/cli/bin/lark-cli.exe`）排在 `.cmd` shim 之前，npm 私有安装后的校验也按同一顺序选择，避免 cmd.exe 按 `&` 截断参数导致设备授权二维码（`auth qrcode`）失败。
+- zh-CN 控制台（cp936）：`setup_cli.py`、`store_cli.py` 在入口把 stdout/stderr 重配置为 UTF-8（`errors="replace"`），避免 `print(json.dumps(..., ensure_ascii=False))` 遇 GBK 无法编码的字符抛 `UnicodeEncodeError`。
+
 ## [0.9.0] - 2026-10-30
 
 ### Added

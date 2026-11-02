@@ -588,6 +588,32 @@ class StoreCliTests(unittest.TestCase):
             ], stdout=StringIO())
 
         self.assertEqual([item["profile"] for item in seen], ["team-z"] * 3)
+
+    def test_main_reconfigures_stdout_for_utf8_before_printing(self):
+        # A zh-CN Windows console defaults to cp936; printing a payload with
+        # characters outside GBK would raise UnicodeEncodeError before the JSON
+        # reaches the caller, so the entry point must switch both streams to
+        # UTF-8 with replacement before any output.
+        events = []
+
+        class TrackedStream(StringIO):
+            def reconfigure(self, encoding=None, errors=None):
+                events.append((encoding, errors))
+
+        missing = Path(self.tmp.name) / "missing.json"
+        context = CliContext(
+            Path(r"D:\lark-cli\lark-cli.exe"), "1.0.95", None, frozenset({"help"}),
+        )
+        stream = TrackedStream()
+        with patch.dict(os.environ, {"PICTUREBOOK_KB_CONFIG": str(missing)}), \
+                patch.object(store_cli, "resolve_cli_context", return_value=context):
+            with patch.object(sys, "stdout", stream), patch.object(sys, "stderr", TrackedStream()):
+                exit_code = store_cli.main(["config-status", "--workspace", self.tmp.name])
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(events[0], ("utf-8", "replace"))
+        self.assertFalse(json.loads(stream.getvalue())["configured"])
+
     def test_init_target_command_passes_initializer_and_authorization(self):
         seen = {}
 
